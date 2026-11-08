@@ -1,13 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  currentLineIndex,
-  lastLineIndex,
-  lineEndAt,
-  lineNumbers,
-  nextLine,
-  previousLine,
-} from "./model";
+import { currentLineIndex, lastLineIndex, lineNumbers, nextLine, previousLine } from "./model";
 import type { Lyrics } from "./types";
 
 const lyrics: Lyrics = [
@@ -62,13 +55,5 @@ describe("playback helpers", () => {
     expect(currentLineIndex(timed, 5)).toBe(3);
     expect(currentLineIndex(timed, 60)).toBe(3);
     expect(lastLineIndex(timed)).toBe(3);
-  });
-
-  it("prefers the last word's end, then the next line's start", () => {
-    expect(lineEndAt(timed, 0)).toBe(3);
-    expect(lineEndAt(timed, 2)).toBe(5);
-    expect(lineEndAt(timed, 3)).toBe(6);
-    expect(lineEndAt(timed, 4)).toBeUndefined();
-    expect(lineEndAt(timed, 99)).toBeUndefined();
   });
 });

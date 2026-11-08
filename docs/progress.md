@@ -58,7 +58,7 @@ on what a file means.
       (the same file and OFL licence as DabMusic); semantic colour tokens
       mirrored from its `globals.css` (light and dark), including the approved
       functional colours and the focus ring.
-- [x] Tests: vitest 5.0.5, which DabMusic does not have. 112 cases in 12 files.
+- [x] Tests: vitest 5.0.5, which DabMusic does not have. 113 cases in 12 files.
 
 ### Format core
 
@@ -424,6 +424,43 @@ next line's start, gap included.
   line had an End chip, and the `End of lyrics` row was absent. The 390 px rows
   kept 44 px targets, with Start and End each on their own line.
 
+### Sentence-level Word tab (PR #18)
+
+The Word tab still made the user cross each word's boundary. Now one drag sets
+the whole sentence's end, and the words are laid out inside it in proportion to
+their text; the per-word pass is only for fine-tuning.
+
+- The rail runs from the line's start to the **next line's start** (the track's
+  end for the last line), so a sentence can be extended past an old end. The
+  filled bar runs to the sentence end, and one dot marks each word's expected
+  place. The old `word-slider` and its boundary-crossing gesture are gone.
+- Releasing anywhere sets the end (stored on the last word) and dispatches the
+  new `setLineSpan`, which gives every word a slice of start–end. It rewrites
+  earlier word timing on purpose; the Line tab's End chip remains the tool that
+  moves only the last word's end.
+- A release at the very start is ignored (no zero-length sentence). A line with
+  no start uses the playhead as its start and writes it on commit.
+- The tab stays on the line after a drag. `Next` (a new control) advances,
+  `Back` returns, and the 0.5× `Slow` aid is unchanged. `Next` does not auto-fire.
+- Clicking a word selects it, seeks to its start and opens a Start/End panel.
+  `Set` stamps an edge at the playhead and `−`/`+` move it by 0.05 s. Keys:
+  `S`/`E` stamp start/end, `,`/`.` nudge the start, `;`/`'` the end (10 ms;
+  Shift 100 ms). The rail's arrows preview ±0.1 s, Enter commits and Esc cancels.
+- `spreadWordTimings` in `word-sync.ts` is now the one proportional split; the
+  reducer's `estimate` and the Line tab's end-fill use it too. The old
+  `syncWordTimings`, `wordIndexAt`, `WordSample` and `lineEndAt` are removed.
+- Verified with the attached file and a generated 200 s silent track: line 1
+  (`00:00.60`, next line `00:02.91`) dragged to `02.00` became
+  `00.60–01.10–01.40–01.60–02.00`; line 3 (`06.48`, next `09.57`, no word
+  timing) dragged to `08.00` became `06.48–06.95–07.30–07.53–08.00`, and
+  `→` + Enter committed `08.10`. Clicking `numb` opened `Word 4 / 4`; `Set` for
+  End at playhead `01.80` wrote `01.80`, `+` wrote `01.85`, Play kept the
+  selection, and Next moved to the ad-lib. Export wrote
+  `[00:00.60] {00:00.60~00:01.10}Drugs {00:01.10~00:01.40}got …`.
+  At 390 px there was no horizontal overflow, word buttons were 44 px, the four
+  controls 85.5×80 px, and the inspector stayed two rows; at 1280 the rail was
+  740 px and the inspector two columns.
+
 ## Resolved decisions
 
 - **Word timing belongs to an exact line.** Kept only while the line's text is
@@ -441,11 +478,11 @@ next line's start, gap included.
   makes the whole line fall back to `[mm:ss.xx] text`, per the format rules, so
   the file never carries a half-timed sweep. The status bar says so.
 - **Blue means timed; gray means still to do.** Two modes, one colour language.
-- **Word time comes from the rail position, not the audio clock.** The rail is
-  the whole line; the words split it in proportion to their text length. The
-  cursor's position maps to the line's time; crossing a word's start boundary
-  records the previous end and the next start at that time, and the last word
-  ends at the right edge. Only rightward movement is allowed.
+- **Word time comes from the sentence span, not the audio clock.** One drag sets
+  where the sentence ends; every word gets a slice of start–end in proportion to
+  its text length, and the line is refilled. A selected word can then be stamped
+  at the playhead or nudged. The Line tab's End chip is the narrower tool that
+  moves only the last word's end.
 - **A line's end is its last word's end.** DMLL has no separate line-end field,
   so every Line row's End chip edits that value. Setting it on a line with only
   a start spreads the words over start–end, which makes the end exportable; a
@@ -461,7 +498,7 @@ next line's start, gap included.
 
 ## Verified
 
-- 112 vitest cases: timing, tokenizing, parsing (including the spec's quick
+- 113 vitest cases: timing, tokenizing, parsing (including the spec's quick
   reference, multi-timestamp lines, the duet form, BOM), serializing,
   round-trips, merging, the sync reducer, rate stepping.
 - All 14 real `.lrc` files in DabMusic's `public/music` (564 timestamped lines,

@@ -2,7 +2,7 @@
 
 Create and edit DMLL lyric files for DabMusic. Paste the lyrics, load the track, and put every word in time with the audio.
 
-The main editor has three tabs: **Edit** for the words, **Line** for each line's start and end, and **Word** for the word-level timing. The old list editor is kept as **Legacy** at `?view=legacy`.
+The main editor has three tabs: **Edit** for the words, **Line** for each line's start and end, and **Word** for the sentence-level timing with per-word fine-tuning. The old list editor is kept as **Legacy** at `?view=legacy`.
 
 ## Header
 
@@ -31,13 +31,14 @@ The main editor has three tabs: **Edit** for the words, **Line** for each line's
 
 ## Word
 
-- One line at a time, centred, with a `Word k / N` counter. Timed words are blue; the word under the cursor is underlined.
-- The rail is the **whole line**: its left is the line start, its right is the line end (the last word's end, or the next line's start; `--:--.--` when neither is known). The words split that span in proportion to their text length, and one dot marks each word's start. The long pill is the cursor and only moves forward.
-- Drag from the far left to the far right. The cursor's position maps linearly to the line's time; when it passes a word's start boundary, the previous word ends and the next starts at that mapped time. The last word ends at the right edge. A jump over several boundaries interpolates. The times come from the position, not the audio clock; the Play and Slow controls are for listening.
-- Releasing early finalises the current word at the release position. Reaching the right edge completes the line and moves to the next one.
-- `Back` returns to the previous line. `Slow` is a 0.5× listening aid and does not change the recorded positions. The rate goes back to 1× when the tab changes.
-- Each release is one undo step. The line start is set from the first word when it had none; a line with an existing start keeps it.
-- Keyboard: `Space` plays or pauses, `→` on the rail steps to the next boundary, `Enter` commits the current word. `Ctrl/Cmd+Z` undoes outside the textarea.
+- One sentence at a time, centred, with `Line k of N`, its word count and the selected word. Timed words are blue; clicking a word selects it (underlined) and seeks to its start.
+- The rail is the sentence's span: its left is the line start, its right is the **next line's start** (or the track's end for the last line). The filled bar runs to the sentence end, and one dot marks each word's proportional place. A line with no start uses the playhead as its start when the sentence is committed.
+- Drag once to where the sentence ends and release. The end is stored on the last word, and every word gets a slice of start–end in proportion to its text length. The preview updates while dragging; the times come from the rail, not the audio clock, so Play and Slow are for listening. A release at the very start would be a zero-length sentence and is ignored.
+- A line that already has word timing is refilled the same way. The Line tab's End chip remains the way to move only the last word's end without touching the other words.
+- Click a word to fine-tune it. The panel shows its Start and End; `Set` stamps that edge at the playhead, and `−`/`+` move it by 0.05 s. Keys: `S`/`E` stamp start/end at the playhead, `,`/`.` nudge the start and `;`/`'` the end by 10 ms (Shift: 100 ms).
+- Each release is one undo step; each `Set` or nudge is one too. `Back` and `Next` move between lines; a sentence drag does not advance by itself, so the words stay available for fine-tuning.
+- `Slow` is a 0.5× listening aid and does not change the recorded positions. The rate goes back to 1× when the tab changes.
+- Keyboard: `←`/`→` on the rail preview the end by 0.1 s, `Enter` commits it and `Esc` cancels; `Space` plays or pauses, `Ctrl/Cmd+Z` undoes outside the textarea.
 
 ## Legacy
 
@@ -56,7 +57,7 @@ The draft is saved in local storage under `dablrc.draft`, unchanged from earlier
 ```bash
 pnpm install
 pnpm dev         # http://localhost:3000
-pnpm test        # format, sync, word-gesture and merge tests
+pnpm test        # format, sync, sentence-fill and merge tests
 pnpm typecheck
 pnpm lint
 pnpm build
@@ -64,6 +65,6 @@ pnpm build
 
 ## Layout
 
-- `src/lib/dmll/`: the format (parse, serialize, tokenize), the sync state machine, the merge that keeps timing when lyric text is edited, and the Word gesture's interpolation (`word-sync.ts`). Pure TypeScript with no UI.
+- `src/lib/dmll/`: the format (parse, serialize, tokenize), the sync state machine, the merge that keeps timing when lyric text is edited, and the proportional sentence fill (`word-sync.ts`). Pure TypeScript with no UI.
 - `src/components/editor/`: the shared session (`use-editor.ts`), the shell (`editor-shell.tsx`), the tab editor (`tabs-editor.tsx`, `editor-header.tsx`, `edit-tab.tsx`, `line-tab.tsx`, `word-tab.tsx`), the player (`player.tsx`), and the legacy list editor and transport.
 - Stack: Next.js 16, React 19, Tailwind CSS 4, TypeScript, next-themes and lucide-react, with the same versions and conventions as DabMusic.

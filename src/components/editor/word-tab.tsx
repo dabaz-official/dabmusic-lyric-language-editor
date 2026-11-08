@@ -1,11 +1,11 @@
 "use client";
 
-import { CornerUpLeft, Pause, Play, Snail } from "lucide-react";
+import { CornerUpLeft, CornerUpRight, Pause, Play, Snail } from "lucide-react";
 import { useCallback, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { cx } from "@/lib/cx";
-import { isLine, previousLine } from "@/lib/dmll/model";
+import { isLine, nextLine, previousLine } from "@/lib/dmll/model";
 
 import type { EditorController } from "./use-editor";
 import { WordLine } from "./word-line";
@@ -50,13 +50,13 @@ function WordControl({ label, title, icon, onClick, disabled, primary, pressed }
 }
 
 /**
- * The word-sync view: one line, a forward-only rail, and the three controls
- * (back, play, slow). Completing a line advances to the next one and keeps the
- * audio playing.
+ * The sentence-sync view: one line, a rail that sets where the sentence ends,
+ * and four controls (back, play, slow, next). Committing a sentence stays on
+ * the line for fine-tuning; Next moves on and keeps the audio playing.
  */
 export function WordTab({ editor, onEdit }: WordTabProps) {
   const { lyrics, active, playback, activate } = editor;
-  const { hasAudio, playing, rate, setRate, togglePlay } = playback;
+  const { hasAudio, playing, rate, setRate, seek, togglePlay } = playback;
 
   const first = lyrics.findIndex((entry) => isLine(entry));
   const index = isLine(lyrics[active]) ? active : first;
@@ -64,6 +64,8 @@ export function WordTab({ editor, onEdit }: WordTabProps) {
   const line = isLine(entry) ? entry : undefined;
   const previous = index >= 0 ? previousLine(lyrics, index) : -1;
   const previousEntry = previous >= 0 ? lyrics[previous] : undefined;
+  const next = index >= 0 ? nextLine(lyrics, index) : -1;
+  const nextEntry = next >= 0 ? lyrics[next] : undefined;
 
   const play = useCallback(() => {
     if (!line) return;
@@ -71,14 +73,20 @@ export function WordTab({ editor, onEdit }: WordTabProps) {
       togglePlay();
       return;
     }
-    activate(index, line.start);
+    // Seek rather than activate: a selected word must survive a listen.
+    if (line.start !== undefined) seek(line.start);
     togglePlay();
-  }, [activate, index, line, playing, togglePlay]);
+  }, [line, playing, seek, togglePlay]);
 
   const back = useCallback(() => {
     if (previous < 0) return;
     activate(previous, isLine(previousEntry) ? previousEntry.start : undefined);
   }, [activate, previous, previousEntry]);
+
+  const goNext = useCallback(() => {
+    if (next < 0) return;
+    activate(next, isLine(nextEntry) ? nextEntry.start : undefined);
+  }, [activate, next, nextEntry]);
 
   const slow = useCallback(() => setRate(rate === 0.5 ? 1 : 0.5), [rate, setRate]);
 
@@ -96,7 +104,7 @@ export function WordTab({ editor, onEdit }: WordTabProps) {
       <WordLine key={index} editor={editor} index={index} entry={line} />
 
       <div className="shrink-0 px-3 pb-[env(safe-area-inset-bottom)] pt-2 sm:pb-3">
-        <div className="mx-auto grid w-full max-w-3xl grid-cols-3 gap-2 sm:gap-3">
+        <div className="mx-auto grid w-full max-w-3xl grid-cols-4 gap-2 sm:gap-3">
           <WordControl
             label="Back"
             title="Back to the previous line"
@@ -119,6 +127,13 @@ export function WordTab({ editor, onEdit }: WordTabProps) {
             disabled={!hasAudio}
             pressed={rate === 0.5}
             onClick={slow}
+          />
+          <WordControl
+            label="Next"
+            title="Go to the next line"
+            icon={<CornerUpRight className="size-6" />}
+            disabled={next < 0}
+            onClick={goNext}
           />
         </div>
       </div>
