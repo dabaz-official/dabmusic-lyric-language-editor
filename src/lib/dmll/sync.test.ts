@@ -295,3 +295,53 @@ describe("manual line end", () => {
     expect(run(after, { type: "undo" }).present).toBe(before.present);
   });
 });
+
+describe("sentence fill", () => {
+  it("fills every word over the explicit span", () => {
+    // "alpha" is 5 characters and "beta" 4, so the boundary is 5/9 of 1–4 s.
+    const history = run(start("alpha beta"), { type: "setLineSpan", entry: 0, start: 1, end: 4 });
+
+    expect(line(history, 0)).toMatchObject({
+      start: 1,
+      tokens: [
+        { text: "alpha ", start: 1, end: 2.67 },
+        { text: "beta", start: 2.67, end: 4 },
+      ],
+    });
+  });
+
+  it("uses the line's start when none is passed", () => {
+    const history = run(start("one two"), {
+      type: "setLineSpan",
+      entry: 0,
+      end: 4,
+    });
+    expect(line(history, 0).start).toBe(0);
+    expect(line(history, 0).tokens.map((token) => token.end)).toEqual([2, 4]);
+
+    const timed = run(start("[00:02.00] one two"), { type: "setLineSpan", entry: 0, end: 4 });
+    expect(line(timed, 0).start).toBe(2);
+    expect(line(timed, 0).tokens.map((token) => token.start)).toEqual([2, 3]);
+  });
+
+  it("rewrites earlier word timing", () => {
+    const history = run(start("[00:10.00]{00:10.00~00:10.90}one {00:10.90~00:12.00}two"), {
+      type: "setLineSpan",
+      entry: 0,
+      start: 10,
+      end: 12,
+    });
+
+    expect(line(history, 0).tokens).toEqual([
+      { text: "one ", start: 10, end: 11 },
+      { text: "two", start: 11, end: 12 },
+    ]);
+  });
+
+  it("is one undo step", () => {
+    const before = start("one two");
+    const after = run(before, { type: "setLineSpan", entry: 0, start: 1, end: 3 });
+
+    expect(run(after, { type: "undo" }).present).toBe(before.present);
+  });
+});

@@ -2,6 +2,7 @@ import { setTokenText } from "./edit";
 import { isLine, nextLine, parentOf, resolveVoices, type LineEntry } from "./model";
 import { roundTime } from "./time";
 import type { Entry, Lyrics, Token } from "./types";
+import { spreadWordTimings } from "./word-sync";
 
 /** `word` taps the next word of the active line; `line` taps the line start. */
 export type SyncMode = "word" | "line";
@@ -47,6 +48,7 @@ export type Action =
   | { type: "setLineEnd"; entry: number; time: number }
   | { type: "clearLineEnd"; entry: number }
   | { type: "nudgeLineEnd"; entry: number; delta: number }
+  | { type: "setLineSpan"; entry: number; start?: number; end: number }
   | { type: "toggleVoice"; entry: number }
   | { type: "toggleAdlib"; entry: number }
   | { type: "clearTiming"; entry: number }
@@ -72,6 +74,7 @@ const RECORDED = new Set<Action["type"]>([
   "setLineEnd",
   "clearLineEnd",
   "nudgeLineEnd",
+  "setLineSpan",
   "toggleVoice",
   "toggleAdlib",
   "clearTiming",
@@ -132,6 +135,8 @@ function step(state: EditorState, action: Action): EditorState {
       return clearLineEnd(state, action.entry);
     case "nudgeLineEnd":
       return nudgeLineEnd(state, action.entry, action.delta);
+    case "setLineSpan":
+      return setLineSpan(state, action.entry, action.start, action.end);
     case "toggleVoice":
       return toggleVoice(state, action.entry);
     case "toggleAdlib":
@@ -368,7 +373,7 @@ function setLineEnd(state: EditorState, index: number, time: number): EditorStat
   const timed = line.tokens.some((token) => token.start !== undefined || token.end !== undefined);
 
   if (!timed) {
-    const tokens = spreadWords(line.tokens, line.start, end);
+    const tokens = spreadWordTimings(line.tokens, line.start, end);
     return { ...state, lyrics: setLine(state.lyrics, index, { ...line, tokens }) };
   }
 
@@ -392,6 +397,35 @@ function clearLineEnd(state: EditorState, index: number): EditorState {
     tokenIndex === at ? { ...token, end: undefined } : token,
   );
   return { ...state, lyrics: setLine(state.lyrics, index, { ...line, tokens }) };
+}
+
+/**
+ * Fills a whole line from `start`–`end`: every word gets a slice in proportion
+ * to its text. This is the Word tab's sentence gesture, so it rewrites any
+ * earlier word timing instead of keeping it.
+ */
+function setLineSpan(
+  state: EditorState,
+  index: number,
+  start: number | undefined,
+  end: number,
+): EditorState {
+  const line = lineAt(state, index);
+  if (!line || line.tokens.length === 0) return state;
+
+  const from = roundTime(Math.max(0, start ?? line.start ?? 0));
+  const to = roundTime(Math.max(from, end));
+  const tokens = spreadWordTimings(line.tokens, from, to);
+
+  const unchanged =
+    line.start === from &&
+    tokens.every(
+      (token, tokenIndex) =>
+        token.start === line.tokens[tokenIndex].start && token.end === line.tokens[tokenIndex].end,
+    );
+  if (unchanged) return state;
+
+  return { ...state, lyrics: setLine(state.lyrics, index, { ...line, start: from, tokens }) };
 }
 
 /** Moves the line's end by `delta` seconds; a line without an end keeps none. */
@@ -455,21 +489,6 @@ function nextStart(lyrics: Lyrics, index: number): number | undefined {
   return undefined;
 }
 
-/** Spreads `from`–`to` over the words in proportion to their length, end to start. */
-function spreadWords(tokens: Token[], from: number, to: number): Token[] {
-  const span = Math.max(0, to - from);
-  const weights = tokens.map((token) => Math.max(1, token.text.trim().length));
-  const total = weights.reduce((sum, weight) => sum + weight, 0);
-
-  let elapsed = 0;
-  return tokens.map((token, index) => {
-    const start = from + (span * elapsed) / total;
-    elapsed += weights[index];
-    const end = index === tokens.length - 1 ? to : from + (span * elapsed) / total;
-    return { text: token.text, start: roundTime(start), end: roundTime(end) };
-  });
-}
-
 /** Gives every line that has a timestamp but no word timing an estimated word timing. */
 function estimate(state: EditorState): EditorState {
   const needs = state.lyrics.map(
@@ -480,7 +499,7 @@ function estimate(state: EditorState): EditorState {
   const lyrics = state.lyrics.map((entry, index) => {
     if (!needs[index] || !isLine(entry) || entry.start === undefined) return entry;
     const to = nextStart(state.lyrics, index) ?? entry.start + FALLBACK_SPAN;
-    return { ...entry, tokens: spreadWords(entry.tokens, entry.start, to) };
+    return { ...entry, tokens: spreadWordTimings(entry.tokens, entry.start, to) };
   });
   return { ...state, lyrics };
 }
