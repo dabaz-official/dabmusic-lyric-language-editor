@@ -1,17 +1,13 @@
 "use client";
 
-import { Play } from "lucide-react";
 import { useCallback, useMemo } from "react";
 
 import { Button } from "@/components/ui/button";
-import { isLine, currentLineIndex, lastLineIndex, parentOf } from "@/lib/dmll/model";
-import { formatTime, roundTime } from "@/lib/dmll/time";
+import { isLine, currentLineIndex, parentOf } from "@/lib/dmll/model";
+import { roundTime } from "@/lib/dmll/time";
 
 import { LineRow } from "./line-row";
-import { TimeChip } from "./time-chip";
 import type { EditorController } from "./use-editor";
-
-const STEP = 0.1;
 
 interface LineTabProps {
   editor: EditorController;
@@ -19,17 +15,12 @@ interface LineTabProps {
   onEdit: () => void;
 }
 
-/** The line list: timestamps, playback, the End of lyrics row and the player. */
+/** The line list: each line's start and end, playback, and the player. */
 export function LineTab({ editor, onEdit }: LineTabProps) {
   const { lyrics, voices, dispatch, activate, playback } = editor;
   const { time, currentTime, seek, playing, togglePlay } = playback;
 
   const current = currentLineIndex(lyrics, time);
-  const last = lastLineIndex(lyrics);
-  const lastEntry = last >= 0 ? lyrics[last] : undefined;
-  const lastTokenIndex = isLine(lastEntry) ? lastEntry.tokens.length - 1 : -1;
-  const lastToken = isLine(lastEntry) && lastTokenIndex >= 0 ? lastEntry.tokens[lastTokenIndex] : undefined;
-  const end = lastToken?.end;
 
   const hasLines = useMemo(() => lyrics.some((entry) => isLine(entry)), [lyrics]);
 
@@ -61,28 +52,27 @@ export function LineTab({ editor, onEdit }: LineTabProps) {
     [activate, playing, togglePlay],
   );
 
-  const setEnd = useCallback(() => {
-    if (!lastToken || lastTokenIndex < 0) return;
-    dispatch({ type: "setTokenEnd", ref: { entry: last, token: lastTokenIndex }, time: currentTime() });
-  }, [currentTime, dispatch, last, lastToken, lastTokenIndex]);
-  const clearEnd = useCallback(() => {
-    if (lastTokenIndex < 0) return;
-    dispatch({ type: "clearTokenEnd", ref: { entry: last, token: lastTokenIndex } });
-  }, [dispatch, last, lastTokenIndex]);
+  const setEnd = useCallback(
+    (index: number) => dispatch({ type: "setLineEnd", entry: index, time: currentTime() }),
+    [currentTime, dispatch],
+  );
+  const clearEnd = useCallback(
+    (index: number) => dispatch({ type: "clearLineEnd", entry: index }),
+    [dispatch],
+  );
   const nudgeEnd = useCallback(
-    (delta: number) => {
-      if (lastTokenIndex < 0 || !lastToken || lastToken.start === undefined || lastToken.end === undefined) return;
-      const end = roundTime(Math.max(lastToken.start, lastToken.end + delta));
-      dispatch({ type: "nudgeTokenEnd", ref: { entry: last, token: lastTokenIndex }, delta });
+    (index: number, delta: number) => {
+      const entry = lyrics[index];
+      if (!isLine(entry)) return;
+      const last = entry.tokens[entry.tokens.length - 1];
+      if (!last || last.start === undefined || last.end === undefined) return;
+      const end = roundTime(Math.max(last.start, last.end + delta));
+      dispatch({ type: "nudgeLineEnd", entry: index, delta });
+      // Like the start nudge, this is a listening tool: follow the end.
       seek(end);
     },
-    [dispatch, last, lastToken, lastTokenIndex, seek],
+    [dispatch, lyrics, seek],
   );
-  const playEnd = useCallback(() => {
-    if (end === undefined) return;
-    seek(end);
-    if (!playing) togglePlay();
-  }, [end, playing, seek, togglePlay]);
 
   if (!hasLines) {
     return (
@@ -109,53 +99,20 @@ export function LineTab({ editor, onEdit }: LineTabProps) {
                 current={current === index}
                 voice={voices[index]}
                 canAdlib={entry.kind === "adlib" || parentOf(lyrics, index) >= 0}
-                onClear={clear}
+                onClearStart={clear}
                 onSetStart={setStart}
-                onSelect={select}
-                onNudge={nudge}
+                onSelectStart={select}
+                onNudgeStart={nudge}
                 onPlay={playLine}
+                onSetEnd={setEnd}
+                onClearEnd={clearEnd}
+                onNudgeEnd={nudgeEnd}
+                onSeekEnd={seek}
                 onToggleVoice={toggleVoice}
                 onToggleAdlib={toggleAdlib}
               />
             );
           })}
-
-          <li className="flex flex-wrap items-center gap-2 rounded-md border-l-2 border-transparent px-2 py-1.5 sm:flex-nowrap">
-            <TimeChip
-              value={end}
-              canTimestamp={lastToken?.start !== undefined}
-              canAdjust={end !== undefined}
-              timestampTitle={
-                end === undefined
-                  ? "Set the end to the playhead"
-                  : `Seek to the end (${formatTime(end)})`
-              }
-              clearTitle="Clear the end of lyrics"
-              minusTitle="Move the end back 0.1 seconds"
-              plusTitle="Move the end forward 0.1 seconds"
-              onTimestamp={() => {
-                if (end !== undefined) seek(end);
-                else setEnd();
-              }}
-              onClear={clearEnd}
-              onMinus={() => nudgeEnd(-STEP)}
-              onPlus={() => nudgeEnd(STEP)}
-            />
-            <Button
-              size="icon"
-              variant="ghost"
-              className="size-11 sm:size-9"
-              title={end === undefined ? "No end of lyrics yet" : "Play from the end"}
-              aria-label={end === undefined ? "Play from the end (unavailable)" : "Play from the end"}
-              disabled={end === undefined}
-              onClick={playEnd}
-            >
-              <Play className="size-4" />
-            </Button>
-            <p className="flex min-h-11 flex-1 basis-full items-center text-sm italic text-text-secondary sm:basis-auto sm:min-h-0">
-              End of lyrics
-            </p>
-          </li>
         </ol>
       </div>
     </div>

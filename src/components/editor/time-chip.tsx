@@ -6,6 +6,8 @@ import { cx } from "@/lib/cx";
 import { formatTime } from "@/lib/dmll/time";
 
 interface TimeChipProps {
+  /** A short caption such as `Start` or `End`, shown inside the chip. */
+  label?: string;
   /** The timestamp shown, or undefined for `--:--.--`. */
   value?: number;
   /** Whether the timestamp itself can be clicked to set/seek. */
@@ -26,8 +28,9 @@ interface TimeChipProps {
 const ICON_BUTTON =
   "inline-flex size-11 shrink-0 items-center justify-center rounded-full text-text-secondary transition-colors hover:bg-surface hover:text-text-primary disabled:pointer-events-none disabled:opacity-40 sm:size-8";
 
-/** The X / timestamp / minus / plus control used by Line rows and the end row. */
+/** The X / timestamp / minus / plus control used by the Line rows. */
 export function TimeChip({
+  label,
   value,
   canTimestamp,
   canAdjust,
@@ -48,6 +51,15 @@ export function TimeChip({
         highlighted ? "border-timed/40 bg-background/70" : "border-border bg-surface-secondary",
       )}
     >
+      {label && (
+        <span
+          aria-hidden
+          className="pl-2 pr-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-tertiary"
+        >
+          {label}
+        </span>
+      )}
+
       <button
         type="button"
         className={ICON_BUTTON}

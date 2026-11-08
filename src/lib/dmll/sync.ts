@@ -44,9 +44,9 @@ export type Action =
   | { type: "setLineStart"; entry: number; time: number }
   | { type: "shiftLine"; entry: number; delta: number }
   | { type: "setLineWords"; entry: number; start?: number; tokens: Token[] }
-  | { type: "setTokenEnd"; ref: TokenRef; time: number }
-  | { type: "clearTokenEnd"; ref: TokenRef }
-  | { type: "nudgeTokenEnd"; ref: TokenRef; delta: number }
+  | { type: "setLineEnd"; entry: number; time: number }
+  | { type: "clearLineEnd"; entry: number }
+  | { type: "nudgeLineEnd"; entry: number; delta: number }
   | { type: "toggleVoice"; entry: number }
   | { type: "toggleAdlib"; entry: number }
   | { type: "clearTiming"; entry: number }
@@ -69,9 +69,9 @@ const RECORDED = new Set<Action["type"]>([
   "setLineStart",
   "shiftLine",
   "setLineWords",
-  "setTokenEnd",
-  "clearTokenEnd",
-  "nudgeTokenEnd",
+  "setLineEnd",
+  "clearLineEnd",
+  "nudgeLineEnd",
   "toggleVoice",
   "toggleAdlib",
   "clearTiming",
@@ -126,12 +126,12 @@ function step(state: EditorState, action: Action): EditorState {
       return shiftLine(state, action.entry, action.delta);
     case "setLineWords":
       return setLineWords(state, action.entry, action.start, action.tokens);
-    case "setTokenEnd":
-      return setTokenEnd(state, action.ref, action.time);
-    case "clearTokenEnd":
-      return setTokenEnd(state, action.ref, undefined);
-    case "nudgeTokenEnd":
-      return nudgeTokenEnd(state, action.ref, action.delta);
+    case "setLineEnd":
+      return setLineEnd(state, action.entry, action.time);
+    case "clearLineEnd":
+      return clearLineEnd(state, action.entry);
+    case "nudgeLineEnd":
+      return nudgeLineEnd(state, action.entry, action.delta);
     case "toggleVoice":
       return toggleVoice(state, action.entry);
     case "toggleAdlib":
@@ -343,30 +343,71 @@ function setLineWords(
   return { ...state, lyrics: setLine(state.lyrics, index, { ...line, start: nextStart, tokens }) };
 }
 
-/** Sets a word's end, or removes it when `time` is undefined. */
-function setTokenEnd(state: EditorState, ref: TokenRef, time: number | undefined): EditorState {
-  const line = lineAt(state, ref.entry);
-  const token = line?.tokens[ref.token];
-  if (!line || !token || token.start === undefined) return state;
-
-  if (time === undefined) {
-    if (token.end === undefined) return state;
-    return editToken(state, ref, (item) => ({ ...item, end: undefined }));
-  }
-
-  const end = roundTime(Math.max(token.start, time));
-  if (end === token.end) return state;
-  return editToken(state, ref, (item) => ({ ...item, end }));
+/** The start of the line's last word: its own, or where the word before it left off. */
+function lastWordStart(line: LineEntry, index: number): number {
+  const token = line.tokens[index];
+  if (token.start !== undefined) return token.start;
+  const previous = line.tokens[index - 1];
+  return previous?.end ?? previous?.start ?? line.start ?? 0;
 }
 
-/** Moves a word's end by `delta` seconds; a word with no end keeps none. */
-function nudgeTokenEnd(state: EditorState, ref: TokenRef, delta: number): EditorState {
-  const token = lineAt(state, ref.entry)?.tokens[ref.token];
-  if (!token || token.start === undefined || token.end === undefined) return state;
+/**
+ * Sets where a line ends. DMLL has no field for a line end, so it lives on the
+ * last word's `end`. A line that has only its start gets its words spread over
+ * the new span in proportion to their text, the same way `estimate` does, so
+ * the end survives a save; a line that already has word timing only moves the
+ * last word's end.
+ */
+function setLineEnd(state: EditorState, index: number, time: number): EditorState {
+  const line = lineAt(state, index);
+  const at = line === undefined ? -1 : line.tokens.length - 1;
+  const last = at >= 0 ? line?.tokens[at] : undefined;
+  if (!line || !last || line.start === undefined) return state;
 
-  const end = roundTime(Math.max(token.start, token.end + delta));
-  if (end === token.end) return state;
-  return editToken(state, ref, (item) => ({ ...item, end }));
+  const end = roundTime(Math.max(line.start, time));
+  const timed = line.tokens.some((token) => token.start !== undefined || token.end !== undefined);
+
+  if (!timed) {
+    const tokens = spreadWords(line.tokens, line.start, end);
+    return { ...state, lyrics: setLine(state.lyrics, index, { ...line, tokens }) };
+  }
+
+  const start = lastWordStart(line, at);
+  const endAt = roundTime(Math.max(start, end));
+  if (last.start === start && last.end === endAt) return state;
+
+  const tokens = line.tokens.map((token, tokenIndex) =>
+    tokenIndex === at ? { ...token, start, end: endAt } : token,
+  );
+  return { ...state, lyrics: setLine(state.lyrics, index, { ...line, tokens }) };
+}
+
+/** Removes the last word's end, which is where the line ended. */
+function clearLineEnd(state: EditorState, index: number): EditorState {
+  const line = lineAt(state, index);
+  const at = line === undefined ? -1 : line.tokens.length - 1;
+  if (!line || at < 0 || line.tokens[at].end === undefined) return state;
+
+  const tokens = line.tokens.map((token, tokenIndex) =>
+    tokenIndex === at ? { ...token, end: undefined } : token,
+  );
+  return { ...state, lyrics: setLine(state.lyrics, index, { ...line, tokens }) };
+}
+
+/** Moves the line's end by `delta` seconds; a line without an end keeps none. */
+function nudgeLineEnd(state: EditorState, index: number, delta: number): EditorState {
+  const line = lineAt(state, index);
+  const at = line === undefined ? -1 : line.tokens.length - 1;
+  const last = at >= 0 ? line?.tokens[at] : undefined;
+  if (!line || !last || last.start === undefined || last.end === undefined) return state;
+
+  const end = roundTime(Math.max(last.start, last.end + delta));
+  if (end === last.end) return state;
+
+  const tokens = line.tokens.map((token, tokenIndex) =>
+    tokenIndex === at ? { ...token, end } : token,
+  );
+  return { ...state, lyrics: setLine(state.lyrics, index, { ...line, tokens }) };
 }
 
 function toggleVoice(state: EditorState, index: number): EditorState {

@@ -58,7 +58,7 @@ on what a file means.
       (the same file and OFL licence as DabMusic); semantic colour tokens
       mirrored from its `globals.css` (light and dark), including the approved
       functional colours and the focus ring.
-- [x] Tests: vitest 5.0.5, which DabMusic does not have. 109 cases in 12 files.
+- [x] Tests: vitest 5.0.5, which DabMusic does not have. 112 cases in 12 files.
 
 ### Format core
 
@@ -396,6 +396,34 @@ disabled.
   `2.67–4.00` (the 5/9 text-length boundary), then advanced to the next line.
   The rail showed `01.00`/`04.00`, two start dots and a ~90 px pill.
 
+### Manual line end (PR #17)
+
+The only end DMLL stores is the last word's `end`, and the Line tab could only
+edit that for the very last line (`End of lyrics`). A line-synced file had no
+way to say where a sentence actually stops, so the Word tab's rail ran to the
+next line's start, gap included.
+
+- Every Line row now has a **Start** and an **End** chip. The End chip edits the
+  last word's `end`: `X` clears it, the timestamp sets it to the playhead or
+  seeks there, and `-`/`+` move it by 0.1 s and follow with the playhead.
+- Setting the end of a line that has only a start spreads all its words over
+  start–end in proportion to their text, so the end is part of a valid word-timed
+  line and survives export. A line that is already word-timed only moves its
+  last word's end; the earlier words stay exactly where they were.
+- The end never moves before the last word's start. A line without a start
+  cannot take an end.
+- The `End of lyrics` row is gone: the last line has the same End chip as every
+  other line.
+- `setTokenEnd` / `clearTokenEnd` / `nudgeTokenEnd` are replaced by
+  `setLineEnd` / `clearLineEnd` / `nudgeLineEnd`, which own the last-word rule.
+- Verified with the attached 137-line line-synced file and a generated silent
+  track: on `Love got me numb` at `06.48`, setting the end at `08.00` filled the
+  words to `06.48–06.95–07.30–07.53–08.00`; `+` made it `08.10` and moved the
+  audio to `08.10`; `X` cleared the last end; Undo restored `08.10`. On a
+  word-timed line, `+` moved only the last word (`01.36` → `01.46`). The last
+  line had an End chip, and the `End of lyrics` row was absent. The 390 px rows
+  kept 44 px targets, with Start and End each on their own line.
+
 ## Resolved decisions
 
 - **Word timing belongs to an exact line.** Kept only while the line's text is
@@ -418,9 +446,11 @@ disabled.
   cursor's position maps to the line's time; crossing a word's start boundary
   records the previous end and the next start at that time, and the last word
   ends at the right edge. Only rightward movement is allowed.
-- **End of lyrics is the last line's last word end.** DMLL has no separate
-  global end, so the `End of lyrics` row edits that value; a line with no word
-  timing has no end to edit.
+- **A line's end is its last word's end.** DMLL has no separate line-end field,
+  so every Line row's End chip edits that value. Setting it on a line with only
+  a start spreads the words over start–end, which makes the end exportable; a
+  word-timed line moves only its last word's end. The last line is no different,
+  so `End of lyrics` is gone.
 - **Edit is plain text.** Comments and tags are ordinary lines; applying pairs
   leftovers by position when both files have the same line count, so a wording
   edit keeps its line time/side/ad-lib role. Word timing is still dropped when
@@ -431,7 +461,7 @@ disabled.
 
 ## Verified
 
-- 109 vitest cases: timing, tokenizing, parsing (including the spec's quick
+- 112 vitest cases: timing, tokenizing, parsing (including the spec's quick
   reference, multi-timestamp lines, the duet form, BOM), serializing,
   round-trips, merging, the sync reducer, rate stepping.
 - All 14 real `.lrc` files in DabMusic's `public/music` (564 timestamped lines,
