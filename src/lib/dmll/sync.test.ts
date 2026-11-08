@@ -241,30 +241,57 @@ describe("line timing", () => {
   });
 });
 
-describe("end of lyrics", () => {
+describe("manual line end", () => {
   const timed = "[00:10.00]{00:10.00~00:10.50}one {00:10.50~00:11.00}two";
 
-  it("sets, nudges and clears the last word's end", () => {
-    const set = run(start(timed), { type: "setTokenEnd", ref: { entry: 0, token: 1 }, time: 12 });
-    expect(line(set, 0).tokens[1]).toEqual({ text: "two", start: 10.5, end: 12 });
+  it("moves only the last word's end of a word-timed line", () => {
+    const history = run(start(timed), { type: "setLineEnd", entry: 0, time: 12 });
 
-    const nudged = run(set, { type: "nudgeTokenEnd", ref: { entry: 0, token: 1 }, delta: 0.1 });
+    expect(line(history, 0).tokens).toEqual([
+      { text: "one ", start: 10, end: 10.5 },
+      { text: "two", start: 10.5, end: 12 },
+    ]);
+  });
+
+  it("spreads a line that only has a start over the new span", () => {
+    // "Hi" is 2 characters and "there" 5, so the boundary is 2/7 of 1–4 s.
+    const history = run(
+      start("Hi there"),
+      { type: "setLineStart", entry: 0, time: 1 },
+      { type: "setLineEnd", entry: 0, time: 4 },
+    );
+
+    expect(line(history, 0).tokens).toEqual([
+      { text: "Hi ", start: 1, end: 1.86 },
+      { text: "there", start: 1.86, end: 4 },
+    ]);
+  });
+
+  it("never puts the end before the last word's start", () => {
+    const history = run(start(timed), { type: "setLineEnd", entry: 0, time: 1 });
+
+    expect(line(history, 0).tokens[1]).toEqual({ text: "two", start: 10.5, end: 10.5 });
+  });
+
+  it("nudges and clears the line end", () => {
+    const set = run(start(timed), { type: "setLineEnd", entry: 0, time: 12 });
+    const nudged = run(set, { type: "nudgeLineEnd", entry: 0, delta: 0.1 });
     expect(line(nudged, 0).tokens[1].end).toBe(12.1);
 
-    const cleared = run(nudged, { type: "clearTokenEnd", ref: { entry: 0, token: 1 } });
+    const cleared = run(nudged, { type: "clearLineEnd", entry: 0 });
     expect(line(cleared, 0).tokens[1]).toEqual({ text: "two", start: 10.5, end: undefined });
   });
 
-  it("does nothing for a word that has no start", () => {
+  it("does nothing for a line without a start", () => {
     const history = start("hello");
-    const changed = run(history, { type: "setTokenEnd", ref: { entry: 0, token: 0 }, time: 2 });
 
-    expect(changed).toBe(history);
+    expect(run(history, { type: "setLineEnd", entry: 0, time: 2 })).toBe(history);
   });
 
-  it("keeps the end at or after the start", () => {
-    const history = run(start(timed), { type: "setTokenEnd", ref: { entry: 0, token: 1 }, time: 1 });
+  it("is one undo step", () => {
+    const before = start(timed);
+    const after = run(before, { type: "setLineEnd", entry: 0, time: 12 });
 
-    expect(line(history, 0).tokens[1].end).toBe(10.5);
+    expect(run(after, { type: "undo" }).present).toBe(before.present);
   });
 });
