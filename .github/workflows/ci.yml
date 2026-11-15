@@ -1,7 +1,7 @@
 name: CI
 
-# lint, typecheck, test, and build, in one place: the definition lives in
-# https://github.com/dabaz-official/.github/blob/main/.github/workflows/web-ci.yml
+# lint, typecheck, test, and build, composed as `pnpm check`. The workflow only
+# runs that gate: https://github.com/dabaz-official/.github/blob/main/.github/workflows/web-ci.yml
 on:
   pull_request:
     branches: [master]
